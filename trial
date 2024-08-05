@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Data Search</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    
+    form {
+      display: flex;
+      flex-direction: column;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    
+    label {
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    
+    input[type="text"] {
+      padding: 5px;
+      font-size: 16px;
+    }
+    
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Data Search</h1>
+  <form>
+    <label for="search-term">Search Term:</label>
+    <input type="text" id="search-term" name="search-term" placeholder="Enter search term">
+    
+    <label for="start-date">Start Date:</label>
+    <input type="text" id="start-date" name="start-date" placeholder="YYYY-MM-DD">
+    
+    <label for="end-date">End Date:</label>
+    <input type="text" id="end-date" name="end-date" placeholder="YYYY-MM-DD">
+    
+    <button type="button" onclick="performSearch()">Search</button>
+  </form>
+
+  <div id="search-results">
+    <!-- Search results will be displayed here -->
+  </div>
+
+  <script>
+    function performSearch() {
+      // Retrieve the search term and date range from the form inputs
+      const searchTerm = document.getElementById("search-term").value;
+      const startDate = document.getElementById("start-date").value;
+      const endDate = document.getElementById("end-date").value;
+
+      // Perform the search using the provided information
+      // (This part would need to be implemented based on your specific data source and search logic)
+      const searchResults = searchData(searchTerm, startDate, endDate);
+
+      // Display the search results
+      displaySearchResults(searchResults);
+    }
+
+    function searchData(searchTerm, startDate, endDate) {
+      // Replace this with your actual search logic
+      return [
+        { id: 1, name: "Data Entry 1", date: "2023-06-15" },
+        { id: 2, name: "Data Entry 2", date: "2023-07-20" },
+        { id: 3, name: "Data Entry 3", date: "2023-08-01" }
+      ];
+    }
+
+    function displaySearchResults(results) {
+      const searchResultsDiv = document.getElementById("search-results");
+      searchResultsDiv.innerHTML = "";
+
+      results.forEach(result => {
+        const resultDiv = document.createElement("div");
+        resultDiv.textContent = `ID: ${result.id}, Name: ${result.name}, Date: ${result.date}`;
+        searchResultsDiv.appendChild(resultDiv);
+      });
+    }
+  </script>
+</body>
+</html>
