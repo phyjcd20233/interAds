@@ -59,6 +59,11 @@
     .p-4 { padding: 1rem; }
     .shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); }
     .mb-4 { margin-bottom: 1rem; }
+    .overflow-x-auto { overflow-x: auto; }
+    .border-gray-200 { border-color: #e5e7eb; }
+    .text-left { text-align: left; }
+    .bg-yellow-500 { background-color: #eab308; }
+    .hover\\:bg-yellow-600:hover { background-color: #ca8a04; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
@@ -66,27 +71,20 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // 模擬 CUSIP 數據庫
-    const cusipData = {
-      '91282CLW9': {
-        issueDate: '2024-11-15',
-        maturityDate: '2034-11-15',
-        couponRate: 4.25,
-        paymentDates: ['05-15', '11-15'] // 每年5月15日和11月15日付息
-      }
-    };
-
     // 語言翻譯對象
     const translations = {
       zh: {
         title: '美國國債計算器',
         cusip: 'CUSIP 編號',
+        issueDate: '發行日期',
+        checkCusip: '檢查 CUSIP',
         buyPrice: '買入價格（每100美元面值）',
         buyDate: '買入日期',
         investmentAmount: '投資金額（美元）',
         couponRate: '票面利率（%）',
         sellDate: '賣出日期',
         sellPrice: '賣出價格（每100美元面值）',
+        exchangeRate: '美元兌港元匯率（可選）',
         calculate: '計算',
         exportCSV: '匯出 CSV',
         clearHistory: '清除歷史記錄',
@@ -97,28 +95,35 @@
         capitalGain: '資本利得',
         totalReturn: '總回報',
         returnPercentage: '回報百分比',
+        hkdReturn: '港元回報（估算）',
         calculationSteps: '計算步驟',
         history: '歷史記錄',
         date: '日期',
-        invalidCusip: '無效的 CUSIP 編號',
+        invalidCusip: '無效的 CUSIP 編號或發行日期，請檢查後重試',
         fillAllFields: '請填寫所有欄位',
-        invalidNumbers: '請輸入有效的價格、投資金額和票面利率',
+        invalidNumbers: '請輸入有效的價格、投資金額、票面利率或匯率',
         invalidDateFormat: '無效的日期格式',
         sellDateAfterBuy: '賣出日期必須晚於買入日期',
         taxNote: '提示：利息收入需繳美國聯邦所得稅，香港無本地稅。請諮詢稅務顧問。',
-        exchangeRate: '美元兌港元匯率（可選）',
-        hkdReturn: '港元回報（估算）',
-        language: 'English'
+        language: 'English',
+        cusipValid: 'CUSIP 和發行日期有效，請繼續輸入資料',
+        cusipInvalid: 'CUSIP 或發行日期無效，請檢查',
+        networkError: '網路錯誤，無法連接到 TreasuryDirect，請稍後重試或手動輸入票面利率',
+        manualInput: '無法獲取資料，請手動輸入票面利率',
+        multipleCusips: '多 CUSIP 查詢結果'
       },
       en: {
         title: 'U.S. Treasury Bond Calculator',
         cusip: 'CUSIP Number',
+        issueDate: 'Issue Date',
+        checkCusip: 'Check CUSIP',
         buyPrice: 'Buy Price (per $100 face value)',
         buyDate: 'Buy Date',
         investmentAmount: 'Investment Amount (USD)',
         couponRate: 'Coupon Rate (%)',
         sellDate: 'Sell Date',
         sellPrice: 'Sell Price (per $100 face value)',
+        exchangeRate: 'USD/HKD Exchange Rate (optional)',
         calculate: 'Calculate',
         exportCSV: 'Export to CSV',
         clearHistory: 'Clear History',
@@ -129,18 +134,22 @@
         capitalGain: 'Capital Gain',
         totalReturn: 'Total Return',
         returnPercentage: 'Return Percentage',
+        hkdReturn: 'HKD Return (estimated)',
         calculationSteps: 'Calculation Steps',
         history: 'Calculation History',
         date: 'Date',
-        invalidCusip: 'Invalid CUSIP number',
+        invalidCusip: 'Invalid CUSIP number or issue date, please check and try again',
         fillAllFields: 'Please fill in all fields',
-        invalidNumbers: 'Please enter valid numbers for prices, investment amount, and coupon rate',
+        invalidNumbers: 'Please enter valid numbers for prices, investment amount, coupon rate, or exchange rate',
         invalidDateFormat: 'Invalid date format',
         sellDateAfterBuy: 'Sell date must be after buy date',
         taxNote: 'Note: Interest income is subject to U.S. federal income tax; no local tax in Hong Kong. Consult a tax advisor.',
-        exchangeRate: 'USD/HKD Exchange Rate (optional)',
-        hkdReturn: 'HKD Return (estimated)',
-        language: '繁體中文'
+        language: '繁體中文',
+        cusipValid: 'CUSIP and issue date are valid, please proceed with data entry',
+        cusipInvalid: 'Invalid CUSIP or issue date, please check',
+        networkError: 'Network error, unable to connect to TreasuryDirect, please try again later or enter coupon rate manually',
+        manualInput: 'Unable to fetch data, please enter coupon rate manually',
+        multipleCusips: 'Multiple CUSIP Results'
       }
     };
 
@@ -161,6 +170,7 @@
       // 狀態管理
       const [language, setLanguage] = useState('zh');
       const [cusip, setCusip] = useState('91282CLW9');
+      const [issueDate, setIssueDate] = useState('2024-11-15');
       const [buyPrice, setBuyPrice] = useState('');
       const [buyDate, setBuyDate] = useState('');
       const [investmentAmount, setInvestmentAmount] = useState('');
@@ -171,20 +181,59 @@
       const [results, setResults] = useState(null);
       const [error, setError] = useState('');
       const [history, setHistory] = useState(JSON.parse(localStorage.getItem('calcHistory')) || []);
+      const [bondData, setBondData] = useState(null);
+      const [isCusipValid, setIsCusipValid] = useState(false);
+      const [isManualInput, setIsManualInput] = useState(false);
 
       // 語言切換
       const toggleLanguage = () => {
         setLanguage(language === 'zh' ? 'en' : 'zh');
       };
 
-      // 自動填充 CUSIP 相關數據
-      useEffect(() => {
-        if (cusipData[cusip]) {
-          setCouponRate(cusipData[cusip].couponRate.toString());
-        } else {
-          setCouponRate('');
+      // 檢查 CUSIP 和發行日期
+      const checkCusip = async () => {
+        setError('');
+        setBondData(null);
+        setIsCusipValid(false);
+        setIsManualInput(false);
+
+        if (!cusip || !issueDate) {
+          setError(translations[language].fillAllFields);
+          return;
         }
-      }, [cusip]);
+
+        try {
+          const response = await fetch(
+            `https://www.treasurydirect.gov/TA_WS/securities/search?cusip=${cusip}&issueDate=${issueDate}&format=json`
+          );
+          if (!response.ok) {
+            if (response.status === 404) {
+              setError(translations[language].invalidCusip);
+              setIsManualInput(true);
+              return;
+            }
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          if (data.length > 0) {
+            setBondData({
+              couponRate: data[0].interestRate,
+              maturityDate: data[0].maturityDate,
+              paymentDates: [data[0].firstInterestPayment.split('-').slice(1).join('-')]
+            });
+            setCouponRate(data[0].interestRate.toString());
+            setIsCusipValid(true);
+            setError(translations[language].cusipValid);
+          } else {
+            setError(translations[language].invalidCusip);
+            setIsManualInput(true);
+          }
+        } catch (err) {
+          setError(translations[language].networkError);
+          setIsManualInput(true);
+          console.error('Fetch Error:', err.message);
+        }
+      };
 
       // 計算應計利息、淨利息和資本利得
       const calculateReturns = () => {
@@ -193,8 +242,8 @@
 
         // 輸入驗證
         try {
-          if (!cusipData[cusip]) {
-            throw new Error(translations[language].invalidCusip);
+          if (!isCusipValid && !isManualInput) {
+            throw new Error(translations[language].cusipInvalid);
           }
           if (!buyPrice || !buyDate || !investmentAmount || !couponRate || !sellDate || !sellPrice) {
             throw new Error(translations[language].fillAllFields);
@@ -204,7 +253,13 @@
           const couponRateNum = parseFloat(couponRate);
           const sellPriceNum = parseFloat(sellPrice);
           const exchangeRateNum = exchangeRate ? parseFloat(exchangeRate) : null;
-          if (isNaN(buyPriceNum) || isNaN(investmentAmountNum) || isNaN(couponRateNum) || isNaN(sellPriceNum) || (exchangeRate && isNaN(exchangeRateNum))) {
+          if (
+            isNaN(buyPriceNum) ||
+            isNaN(investmentAmountNum) ||
+            isNaN(couponRateNum) ||
+            isNaN(sellPriceNum) ||
+            (exchangeRate && isNaN(exchangeRateNum))
+          ) {
             throw new Error(translations[language].invalidNumbers);
           }
           const buyDateObj = new Date(buyDate);
@@ -218,19 +273,19 @@
 
           // 計算面值
           const faceValue = investmentAmountNum / (buyPriceNum / 100);
-          console.log('Face Value:', faceValue); // 調試日誌
+          console.log('Face Value:', faceValue);
 
           // 計算應計利息
-          const lastPaymentDate = getLastPaymentDate(buyDateObj, cusipData[cusip].paymentDates);
+          const lastPaymentDate = getLastPaymentDate(buyDateObj, bondData ? bondData.paymentDates : ['05-15', '11-15']);
           const daysAccrued = differenceInDays(buyDateObj, lastPaymentDate);
           const semiAnnualCoupon = (couponRateNum / 100) * faceValue / 2;
           const accruedInterest = (semiAnnualCoupon / 180) * daysAccrued;
-          console.log('Accrued Interest:', accruedInterest, 'Days:', daysAccrued); // 調試日誌
+          console.log('Accrued Interest:', accruedInterest, 'Days:', daysAccrued);
 
           // 計算收到的利息支付
-          const paymentDates = getPaymentDatesBetween(buyDateObj, sellDateObj, cusipData[cusip].paymentDates);
+          const paymentDates = getPaymentDatesBetween(buyDateObj, sellDateObj, bondData ? bondData.paymentDates : ['05-15', '11-15']);
           const totalInterestReceived = semiAnnualCoupon * paymentDates.length;
-          console.log('Payment Dates:', paymentDates, 'Total Interest:', totalInterestReceived); // 調試日誌
+          console.log('Payment Dates:', paymentDates, 'Total Interest:', totalInterestReceived);
 
           // 淨利息收入
           const netInterest = totalInterestReceived - accruedInterest;
@@ -243,7 +298,7 @@
           const returnPercentage = (totalReturn / investmentAmountNum) * 100;
           const hkdReturn = exchangeRateNum ? (totalReturn * exchangeRateNum).toFixed(2) : null;
 
-          // 計算步驟（根據語言動態生成）
+          // 計算步驟
           const steps = [
             `1. ${language === 'zh' ? '面值 = 投資金額 ÷ (買入價格 ÷ 100)' : 'Face Value = Investment Amount ÷ (Buy Price ÷ 100)'} = ${investmentAmountNum} ÷ (${buyPriceNum} ÷ 100) = ${faceValue.toFixed(2)} USD`,
             `2. ${language === 'zh' ? '半年票息 = (票面利率 ÷ 100) × 面值 ÷ 2' : 'Semi-Annual Coupon = (Coupon Rate ÷ 100) × Face Value ÷ 2'} = (${couponRateNum} ÷ 100) × ${faceValue.toFixed(2)} ÷ 2 = ${semiAnnualCoupon.toFixed(2)} USD`,
@@ -270,12 +325,12 @@
           setResults(result);
 
           // 儲存到歷史記錄
-          const newHistory = [...history, { ...result, cusip, buyDate, sellDate, timestamp: new Date().toISOString() }];
+          const newHistory = [...history, { ...result, cusip, buyDate, sellDate, issueDate, timestamp: new Date().toISOString() }];
           setHistory(newHistory);
           localStorage.setItem('calcHistory', JSON.stringify(newHistory));
         } catch (err) {
           setError(err.message);
-          console.error('Calculation Error:', err.message); // 調試日誌
+          console.error('Calculation Error:', err.message);
         }
       };
 
@@ -287,9 +342,9 @@
           return new Date(buyYear, month - 1, day);
         }).filter(date => date <= buyDate);
         if (dates.length === 0) {
-          const issueDate = new Date(cusipData[cusip].issueDate);
-          console.log('Using issue date as fallback:', issueDate); // 調試日誌
-          return issueDate;
+          const issueDateObj = new Date(issueDate);
+          console.log('Using issue date as fallback:', issueDateObj);
+          return issueDateObj;
         }
         return dates[dates.length - 1];
       };
@@ -316,8 +371,8 @@
       const exportToCSV = () => {
         if (!results) return;
         const csvContent = [
-          `${translations[language].cusip},${translations[language].faceValue},${translations[language].accruedInterest},${translations[language].netInterest},${translations[language].capitalGain},${translations[language].totalReturn},${translations[language].returnPercentage},${translations[language].buyDate},${translations[language].sellDate}${language === 'zh' ? `,${translations[language].hkdReturn}` : ''}`,
-          `${cusip},${results.faceValue},${results.accruedInterest},${results.netInterest},${results.capitalGain},${results.totalReturn},${results.returnPercentage}%,${buyDate},${sellDate}${results.hkdReturn ? `,${results.hkdReturn}` : ''}`
+          `${translations[language].cusip},${translations[language].issueDate},${translations[language].faceValue},${translations[language].accruedInterest},${translations[language].netInterest},${translations[language].capitalGain},${translations[language].totalReturn},${translations[language].returnPercentage},${translations[language].buyDate},${translations[language].sellDate}${language === 'zh' ? `,${translations[language].hkdReturn}` : ''}`,
+          `${cusip},${issueDate},${results.faceValue},${results.accruedInterest},${results.netInterest},${results.capitalGain},${results.totalReturn},${results.returnPercentage}%,${buyDate},${sellDate}${results.hkdReturn ? `,${results.hkdReturn}` : ''}`
         ].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
@@ -355,13 +410,33 @@
                 placeholder="e.g., 91282CLW9"
                 className="mt-1 block w-full p-2 border rounded-md"
               />
-              {cusipData[cusip] && (
-                <p className="text-sm text-gray-600 mt-1">
-                  {language === 'zh' ? '發行日期' : 'Issue Date'}: {cusipData[cusip].issueDate} | 
-                  {language === 'zh' ? '到期日期' : 'Maturity Date'}: {cusipData[cusip].maturityDate}
-                </p>
-              )}
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">{translations[language].issueDate}</label>
+              <input
+                type="date"
+                value={issueDate}
+                onChange={(e) => setIssueDate(e.target.value)}
+                className="mt-1 block w-full p-2 border rounded-md"
+              />
+            </div>
+          </div>
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={checkCusip}
+              className="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600"
+            >
+              {translations[language].checkCusip}
+            </button>
+          </div>
+          {error && <p className="text-red-500 text-center mt-4">{error}</p>}
+          {isCusipValid && (
+            <p className="text-green-500 text-center mt-4">{translations[language].cusipValid}</p>
+          )}
+          {isManualInput && (
+            <p className="text-yellow-500 text-center mt-4">{translations[language].manualInput}</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">{translations[language].buyPrice}</label>
               <input
@@ -371,6 +446,7 @@
                 placeholder="e.g., 96.867"
                 className="mt-1 block w-full p-2 border rounded-md"
                 step="0.001"
+                disabled={!isCusipValid && !isManualInput}
               />
             </div>
             <div>
@@ -380,6 +456,7 @@
                 value={buyDate}
                 onChange={(e) => setBuyDate(e.target.value)}
                 className="mt-1 block w-full p-2 border rounded-md"
+                disabled={!isCusipValid && !isManualInput}
               />
             </div>
             <div>
@@ -391,6 +468,7 @@
                 placeholder="e.g., 21000"
                 className="mt-1 block w-full p-2 border rounded-md"
                 step="0.01"
+                disabled={!isCusipValid && !isManualInput}
               />
             </div>
             <div>
@@ -402,8 +480,13 @@
                 placeholder="e.g., 4.25"
                 className="mt-1 block w-full p-2 border rounded-md"
                 step="0.01"
-                disabled={cusipData[cusip]}
+                disabled={isCusipValid && bondData}
               />
+              {bondData && isCusipValid && (
+                <p className="text-sm text-gray-600 mt-1">
+                  {language === 'zh' ? '到期日期' : 'Maturity Date'}: {bondData.maturityDate}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">{translations[language].sellDate}</label>
@@ -412,6 +495,7 @@
                 value={sellDate}
                 onChange={(e) => setSellDate(e.target.value)}
                 className="mt-1 block w-full p-2 border rounded-md"
+                disabled={!isCusipValid && !isManualInput}
               />
             </div>
             <div>
@@ -423,6 +507,7 @@
                 placeholder="e.g., 98.963"
                 className="mt-1 block w-full p-2 border rounded-md"
                 step="0.001"
+                disabled={!isCusipValid && !isManualInput}
               />
             </div>
             <div>
@@ -434,14 +519,15 @@
                 placeholder="e.g., 7.8"
                 className="mt-1 block w-full p-2 border rounded-md"
                 step="0.01"
+                disabled={!isCusipValid && !isManualInput}
               />
             </div>
           </div>
-          {error && <p className="text-red-500 text-center mt-4">{error}</p>}
           <div className="flex justify-center mt-6 space-x-4">
             <button
               onClick={calculateReturns}
               className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+              disabled={!isCusipValid && !isManualInput}
             >
               {translations[language].calculate}
             </button>
@@ -457,6 +543,8 @@
           {results && (
             <div className="mt-6 p-4 bg-gray-50 rounded-md">
               <h2 className="text-lg font-semibold">{translations[language].results}</h2>
+              <p>{translations[language].cusip}: {cusip}</p>
+              <p>{translations[language].issueDate}: {issueDate}</p>
               <p>{translations[language].faceValue}: ${results.faceValue}</p>
               <p>{translations[language].accruedInterest}: ${results.accruedInterest}</p>
               <p>{translations[language].netInterest}: ${results.netInterest}</p>
@@ -484,14 +572,33 @@
               >
                 {translations[language].clearHistory}
               </button>
-              <div className="space-y-2">
-                {history.map((entry, index) => (
-                  <div key={index} className="p-2 bg-white rounded-md shadow">
-                    <p>{translations[language].cusip}: {entry.cusip} | {translations[language].date}: {new Date(entry.timestamp).toLocaleString()}</p>
-                    <p>{translations[language].faceValue}: ${entry.faceValue} | {translations[language].totalReturn}: ${entry.totalReturn} ({entry.returnPercentage}%)</p>
-                    {entry.hkdReturn && <p>{translations[language].hkdReturn}: HK${entry.hkdReturn}</p>}
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left border border-gray-200">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2">{translations[language].cusip}</th>
+                      <th className="p-2">{translations[language].issueDate}</th>
+                      <th className="p-2">{translations[language].date}</th>
+                      <th className="p-2">{translations[language].faceValue}</th>
+                      <th className="p-2">{translations[language].totalReturn}</th>
+                      <th className="p-2">{translations[language].returnPercentage}</th>
+                      {language === 'zh' && <th className="p-2">{translations[language].hkdReturn}</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((entry, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="p-2">{entry.cusip}</td>
+                        <td className="p-2">{entry.issueDate}</td>
+                        <td className="p-2">{new Date(entry.timestamp).toLocaleString()}</td>
+                        <td className="p-2">${entry.faceValue}</td>
+                        <td className="p-2">${entry.totalReturn}</td>
+                        <td className="p-2">{entry.returnPercentage}%</td>
+                        {language === 'zh' && entry.hkdReturn && <td className="p-2">HK${entry.hkdReturn}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
