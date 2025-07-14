@@ -78,6 +78,7 @@
         buyDate: '買入日期',
         investmentAmount: '投資金額（美元）',
         couponRate: '票面利率（%）',
+        paymentDates: '付息日期（以逗號分隔，例如 05-15,11-15）',
         sellDate: '賣出日期',
         sellPrice: '賣出價格（每100美元面值）',
         exchangeRate: '美元兌港元匯率（可選）',
@@ -96,7 +97,7 @@
         history: '歷史記錄',
         date: '日期',
         invalidCusip: '以下 CUSIP 或發行日期無效：',
-        fillAllFields: '請填寫所有欄位，包括 CUSIP 和發行日期',
+        fillAllFields: '請填寫所有欄位，包括 CUSIP、發行日期和付息日期',
         invalidNumbers: '請輸入有效的價格、投資金額、票面利率或匯率',
         invalidDateFormat: '無效的日期格式',
         sellDateAfterBuy: '賣出日期必須晚於買入日期',
@@ -104,8 +105,8 @@
         language: 'English',
         cusipValid: '所有 CUSIP 和發行日期有效，請繼續輸入資料',
         cusipInvalid: '部分或全部 CUSIP 或發行日期無效，請檢查',
-        networkError: '網路錯誤，無法連接到 TreasuryDirect，請稍後重試或手動輸入票面利率',
-        manualInput: '無法獲取以下 CUSIP 資料，請手動輸入票面利率：',
+        networkError: '網路錯誤，無法連接到 TreasuryDirect，請手動輸入票面利率和付息日期',
+        manualInput: '無法獲取以下 CUSIP 資料，請手動輸入票面利率和付息日期：',
         multipleCusips: '多 CUSIP 比較結果',
         renderError: '頁面渲染失敗，請檢查控制台錯誤或聯繫支持'
       },
@@ -118,6 +119,7 @@
         buyDate: 'Buy Date',
         investmentAmount: 'Investment Amount (USD)',
         couponRate: 'Coupon Rate (%)',
+        paymentDates: 'Payment Dates (comma-separated, e.g., 05-15,11-15)',
         sellDate: 'Sell Date',
         sellPrice: 'Sell Price (per $100 face value)',
         exchangeRate: 'USD/HKD Exchange Rate (optional)',
@@ -136,7 +138,7 @@
         history: 'Calculation History',
         date: 'Date',
         invalidCusip: 'The following CUSIP or issue date is invalid:',
-        fillAllFields: 'Please fill in all fields, including CUSIP and issue date',
+        fillAllFields: 'Please fill in all fields, including CUSIP, issue date, and payment dates',
         invalidNumbers: 'Please enter valid numbers for prices, investment amount, coupon rate, or exchange rate',
         invalidDateFormat: 'Invalid date format',
         sellDateAfterBuy: 'Sell date must be after buy date',
@@ -144,8 +146,8 @@
         language: '繁體中文',
         cusipValid: 'All CUSIP and issue dates are valid, please proceed with data entry',
         cusipInvalid: 'Some or all CUSIP or issue dates are invalid, please check',
-        networkError: 'Network error, unable to connect to TreasuryDirect, please try again later or enter coupon rate manually',
-        manualInput: 'Unable to fetch data for the following CUSIP, please enter coupon rate manually:',
+        networkError: 'Network error, unable to connect to TreasuryDirect, please enter coupon rate and payment dates manually',
+        manualInput: 'Unable to fetch data for the following CUSIP, please enter coupon rate and payment dates manually:',
         multipleCusips: 'Multiple CUSIP Comparison Results',
         renderError: 'Failed to render page, please check console errors or contact support'
       }
@@ -197,6 +199,7 @@
       const [language, setLanguage] = React.useState(localStorage.getItem('language') || 'zh');
       const [cusipInput, setCusipInput] = React.useState('91282CLW9');
       const [issueDateInput, setIssueDateInput] = React.useState('2024-11-15');
+      const [paymentDatesInput, setPaymentDatesInput] = React.useState('05-15,11-15');
       const [buyPrice, setBuyPrice] = React.useState('');
       const [buyDate, setBuyDate] = React.useState('');
       const [investmentAmount, setInvestmentAmount] = React.useState('');
@@ -209,7 +212,7 @@
       const [history, setHistory] = React.useState(JSON.parse(localStorage.getItem('calcHistory')) || []);
       const [bondDataList, setBondDataList] = React.useState([]);
       const [isCusipValid, setIsCusipValid] = React.useState(false);
-      const [isManualInput, setIsManualInput] = React.useState(false);
+      const [isManualInput, setIsManualInput] = React.useState(true); // 預設啟用手動輸入
       const [invalidCusips, setInvalidCusips] = React.useState([]);
 
       // 語言切換
@@ -225,18 +228,19 @@
         setError('');
         setBondDataList([]);
         setIsCusipValid(false);
-        setIsManualInput(false);
+        setIsManualInput(true); // 強制手動輸入作為後備
         setInvalidCusips([]);
-        console.log('Checking CUSIPs:', cusipInput, 'Issue Dates:', issueDateInput);
+        console.log('Checking CUSIPs:', cusipInput, 'Issue Dates:', issueDateInput, 'Payment Dates:', paymentDatesInput);
 
-        if (!cusipInput || !issueDateInput) {
+        if (!cusipInput || !issueDateInput || !paymentDatesInput) {
           setError(translations[language].fillAllFields);
-          console.error('Missing CUSIP or issue date input');
+          console.error('Missing CUSIP, issue date, or payment dates input');
           return;
         }
 
         const cusips = cusipInput.split(',').map(c => c.trim()).filter(c => c);
         const issueDates = issueDateInput.split(',').map(d => d.trim()).filter(d => d);
+        const paymentDatesList = paymentDatesInput.split(',').map(d => d.trim()).filter(d => d);
 
         if (cusips.length !== issueDates.length || cusips.length === 0) {
           setError(translations[language].fillAllFields);
@@ -247,6 +251,7 @@
         const bondDataResults = [];
         const invalid = [];
 
+        // 嘗試 API 請求
         for (let i = 0; i < cusips.length; i++) {
           const cusip = cusips[i];
           const issueDate = issueDates[i];
@@ -268,7 +273,7 @@
                 issueDate,
                 couponRate: parseFloat(data[0].interestRate) || 0,
                 maturityDate: data[0].maturityDate || 'N/A',
-                paymentDates: data[0].firstInterestPayment ? [data[0].firstInterestPayment.split('-').slice(1).join('-')] : ['05-15', '11-15']
+                paymentDates: data[0].firstInterestPayment ? [data[0].firstInterestPayment.split('-').slice(1).join('-')] : paymentDatesList
               });
               console.log(`Success for ${cusip}:`, data[0]);
             } else {
@@ -284,15 +289,19 @@
         setBondDataList(bondDataResults);
         setInvalidCusips(invalid);
 
-        if (invalid.length > 0 && bondDataResults.length === 0) {
-          setError(`${translations[language].invalidCusip} ${invalid.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}`);
+        if (invalid.length > 0 || bondDataResults.length === 0) {
+          setError(`${translations[language].networkError}`);
           setIsManualInput(true);
-          console.error('All CUSIPs invalid:', invalid);
-        } else if (invalid.length > 0) {
-          setError(`${translations[language].manualInput} ${invalid.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}`);
-          setIsManualInput(true);
-          setIsCusipValid(true);
-          console.warn('Some CUSIPs invalid:', invalid);
+          setIsCusipValid(true); // 允許手動輸入
+          console.warn('API unavailable, switching to manual input:', invalid);
+          // 使用手動輸入的付息日期
+          const manualBondData = cusips.map((cusip, i) => ({
+            cusip,
+            issueDate: issueDates[i],
+            couponRate: 0, // 等待用戶輸入
+            paymentDates: paymentDatesList
+          }));
+          setBondDataList(manualBondData);
         } else {
           setIsCusipValid(true);
           setError(translations[language].cusipValid);
@@ -307,15 +316,15 @@
         console.log('Calculating returns...');
 
         try {
-          if (!isCusipValid && !isManualInput) {
+          if (!isCusipValid) {
             throw new Error(translations[language].cusipInvalid);
           }
-          if (!buyPrice || !buyDate || !investmentAmount || (!couponRate && isManualInput) || !sellDate || !sellPrice) {
+          if (!buyPrice || !buyDate || !investmentAmount || !couponRate || !sellDate || !sellPrice || !paymentDatesInput) {
             throw new Error(translations[language].fillAllFields);
           }
           const buyPriceNum = parseFloat(buyPrice);
           const investmentAmountNum = parseFloat(investmentAmount);
-          const couponRateNum = parseFloat(isManualInput ? couponRate : bondDataList[0]?.couponRate || couponRate);
+          const couponRateNum = parseFloat(couponRate);
           const sellPriceNum = parseFloat(sellPrice);
           const exchangeRateNum = exchangeRate ? parseFloat(exchangeRate) : null;
           if (
@@ -337,9 +346,14 @@
           }
 
           const resultsArray = [];
-          const cusipsToProcess = isManualInput && !isCusipValid
-            ? [{ cusip: cusipInput.split(',')[0].trim(), issueDate: issueDateInput.split(',')[0].trim(), couponRate: couponRateNum, paymentDates: ['05-15', '11-15'] }]
-            : bondDataList;
+          const cusipsToProcess = bondDataList.length > 0
+            ? bondDataList
+            : cusipInput.split(',').map((cusip, i) => ({
+                cusip: cusip.trim(),
+                issueDate: issueDateInput.split(',')[i].trim(),
+                couponRate: couponRateNum,
+                paymentDates: paymentDatesInput.split(',').map(d => d.trim())
+              }));
 
           console.log('Processing CUSIPs:', cusipsToProcess);
 
@@ -542,6 +556,20 @@
                     className: 'mt-1 block w-full p-2 border rounded-md'
                   })
                 ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'paymentDates' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].paymentDates),
+                  React.createElement('input', {
+                    type: 'text',
+                    value: paymentDatesInput,
+                    onChange: e => setPaymentDatesInput(e.target.value),
+                    placeholder: 'e.g., 05-15,11-15',
+                    className: 'mt-1 block w-full p-2 border rounded-md'
+                  })
+                ]
               )
             ]
           ),
@@ -580,7 +608,7 @@
                     placeholder: 'e.g., 96.867',
                     className: 'mt-1 block w-full p-2 border rounded-md',
                     step: '0.001',
-                    disabled: !isCusipValid && !isManualInput
+                    disabled: !isCusipValid
                   })
                 ]
               ),
@@ -594,7 +622,7 @@
                     value: buyDate,
                     onChange: e => setBuyDate(e.target.value),
                     className: 'mt-1 block w-full p-2 border rounded-md',
-                    disabled: !isCusipValid && !isManualInput
+                    disabled: !isCusipValid
                   })
                 ]
               ),
@@ -610,7 +638,7 @@
                     placeholder: 'e.g., 21000',
                     className: 'mt-1 block w-full p-2 border rounded-md',
                     step: '0.01',
-                    disabled: !isCusipValid && !isManualInput
+                    disabled: !isCusipValid
                   })
                 ]
               ),
@@ -625,10 +653,9 @@
                     onChange: e => setCouponRate(e.target.value),
                     placeholder: 'e.g., 4.25',
                     className: 'mt-1 block w-full p-2 border rounded-md',
-                    step: '0.01',
-                    disabled: isCusipValid && bondDataList.length > 0
+                    step: '0.01'
                   }),
-                  bondDataList.length > 0 && isCusipValid && React.createElement(
+                  bondDataList.length > 0 && !isManualInput && React.createElement(
                     'p',
                     { className: 'text-sm text-gray-600 mt-1' },
                     `${language === 'zh' ? '到期日期' : 'Maturity Dates'}: ${bondDataList.map(b => `${b.cusip}: ${b.maturityDate}`).join(', ')}`
@@ -645,7 +672,7 @@
                     value: sellDate,
                     onChange: e => setSellDate(e.target.value),
                     className: 'mt-1 block w-full p-2 border rounded-md',
-                    disabled: !isCusipValid && !isManualInput
+                    disabled: !isCusipValid
                   })
                 ]
               ),
@@ -661,7 +688,7 @@
                     placeholder: 'e.g., 98.963',
                     className: 'mt-1 block w-full p-2 border rounded-md',
                     step: '0.001',
-                    disabled: !isCusipValid && !isManualInput
+                    disabled: !isCusipValid
                   })
                 ]
               ),
@@ -677,7 +704,7 @@
                     placeholder: 'e.g., 7.8',
                     className: 'mt-1 block w-full p-2 border rounded-md',
                     step: '0.01',
-                    disabled: !isCusipValid && !isManualInput
+                    disabled: !isCusipValid
                   })
                 ]
               )
@@ -692,7 +719,7 @@
                 {
                   onClick: calculateReturns,
                   className: 'bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600',
-                  disabled: !isCusipValid && !isManualInput,
+                  disabled: !isCusipValid,
                   key: 'calculate'
                 },
                 translations[language].calculate
