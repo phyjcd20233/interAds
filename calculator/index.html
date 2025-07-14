@@ -6,9 +6,7 @@
   <title>美國國債計算器 | U.S. Treasury Bond Calculator</title>
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6.26.0/babel.min.js"></script>
   <style>
-    /* Minimal Tailwind CSS output for required classes */
     .bg-gray-100 { background-color: #f3f4f6; }
     .min-h-screen { min-height: 100vh; }
     .flex { display: flex; }
@@ -68,9 +66,7 @@
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
   <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect } = React;
-
+  <script>
     // 語言翻譯對象
     const translations = {
       zh: {
@@ -110,7 +106,8 @@
         cusipInvalid: '部分或全部 CUSIP 或發行日期無效，請檢查',
         networkError: '網路錯誤，無法連接到 TreasuryDirect，請稍後重試或手動輸入票面利率',
         manualInput: '無法獲取以下 CUSIP 資料，請手動輸入票面利率：',
-        multipleCusips: '多 CUSIP 比較結果'
+        multipleCusips: '多 CUSIP 比較結果',
+        renderError: '頁面渲染失敗，請檢查控制台錯誤或聯繫支持'
       },
       en: {
         title: 'U.S. Treasury Bond Calculator',
@@ -149,7 +146,8 @@
         cusipInvalid: 'Some or all CUSIP or issue dates are invalid, please check',
         networkError: 'Network error, unable to connect to TreasuryDirect, please try again later or enter coupon rate manually',
         manualInput: 'Unable to fetch data for the following CUSIP, please enter coupon rate manually:',
-        multipleCusips: 'Multiple CUSIP Comparison Results'
+        multipleCusips: 'Multiple CUSIP Comparison Results',
+        renderError: 'Failed to render page, please check console errors or contact support'
       }
     };
 
@@ -167,30 +165,59 @@
       return `${year}-${month}-${day}`;
     };
 
+    // 錯誤邊界組件
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { error: null };
+      }
+
+      static getDerivedStateFromError(error) {
+        return { error: error.message };
+      }
+
+      componentDidCatch(error, errorInfo) {
+        console.error('ErrorBoundary caught:', error, errorInfo);
+      }
+
+      render() {
+        if (this.state.error) {
+          return React.createElement(
+            'div',
+            { className: 'text-red-500 text-center p-4' },
+            translations[localStorage.getItem('language') || 'zh'].renderError
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    // BondCalculator 組件
     const BondCalculator = () => {
-      // 狀態管理
-      const [language, setLanguage] = useState('zh');
-      const [cusipInput, setCusipInput] = useState('91282CLW9');
-      const [issueDateInput, setIssueDateInput] = useState('2024-11-15');
-      const [buyPrice, setBuyPrice] = useState('');
-      const [buyDate, setBuyDate] = useState('');
-      const [investmentAmount, setInvestmentAmount] = useState('');
-      const [couponRate, setCouponRate] = useState('');
-      const [sellDate, setSellDate] = useState('');
-      const [sellPrice, setSellPrice] = useState('');
-      const [exchangeRate, setExchangeRate] = useState('');
-      const [results, setResults] = useState([]);
-      const [error, setError] = useState('');
-      const [history, setHistory] = useState(JSON.parse(localStorage.getItem('calcHistory')) || []);
-      const [bondDataList, setBondDataList] = useState([]);
-      const [isCusipValid, setIsCusipValid] = useState(false);
-      const [isManualInput, setIsManualInput] = useState(false);
-      const [invalidCusips, setInvalidCusips] = useState([]);
+      const [language, setLanguage] = React.useState(localStorage.getItem('language') || 'zh');
+      const [cusipInput, setCusipInput] = React.useState('91282CLW9');
+      const [issueDateInput, setIssueDateInput] = React.useState('2024-11-15');
+      const [buyPrice, setBuyPrice] = React.useState('');
+      const [buyDate, setBuyDate] = React.useState('');
+      const [investmentAmount, setInvestmentAmount] = React.useState('');
+      const [couponRate, setCouponRate] = React.useState('');
+      const [sellDate, setSellDate] = React.useState('');
+      const [sellPrice, setSellPrice] = React.useState('');
+      const [exchangeRate, setExchangeRate] = React.useState('');
+      const [results, setResults] = React.useState([]);
+      const [error, setError] = React.useState('');
+      const [history, setHistory] = React.useState(JSON.parse(localStorage.getItem('calcHistory')) || []);
+      const [bondDataList, setBondDataList] = React.useState([]);
+      const [isCusipValid, setIsCusipValid] = React.useState(false);
+      const [isManualInput, setIsManualInput] = React.useState(false);
+      const [invalidCusips, setInvalidCusips] = React.useState([]);
 
       // 語言切換
       const toggleLanguage = () => {
-        setLanguage(prev => (prev === 'zh' ? 'en' : 'zh'));
-        console.log('Language toggled to:', language === 'zh' ? 'en' : 'zh');
+        const newLang = language === 'zh' ? 'en' : 'zh';
+        setLanguage(newLang);
+        localStorage.setItem('language', newLang);
+        console.log('Language toggled to:', newLang);
       };
 
       // 檢查多個 CUSIP 和發行日期
@@ -211,15 +238,9 @@
         const cusips = cusipInput.split(',').map(c => c.trim()).filter(c => c);
         const issueDates = issueDateInput.split(',').map(d => d.trim()).filter(d => d);
 
-        if (cusips.length !== issueDates.length) {
+        if (cusips.length !== issueDates.length || cusips.length === 0) {
           setError(translations[language].fillAllFields);
-          console.error('CUSIP and issue date arrays length mismatch:', cusips.length, issueDates.length);
-          return;
-        }
-
-        if (cusips.length === 0) {
-          setError(translations[language].fillAllFields);
-          console.error('No valid CUSIPs provided');
+          console.error('CUSIP and issue date arrays length mismatch or empty:', cusips.length, issueDates.length);
           return;
         }
 
@@ -245,7 +266,7 @@
               bondDataResults.push({
                 cusip,
                 issueDate,
-                couponRate: data[0].interestRate || 0,
+                couponRate: parseFloat(data[0].interestRate) || 0,
                 maturityDate: data[0].maturityDate || 'N/A',
                 paymentDates: data[0].firstInterestPayment ? [data[0].firstInterestPayment.split('-').slice(1).join('-')] : ['05-15', '11-15']
               });
@@ -285,7 +306,6 @@
         setResults([]);
         console.log('Calculating returns...');
 
-        // 輸入驗證
         try {
           if (!isCusipValid && !isManualInput) {
             throw new Error(translations[language].cusipInvalid);
@@ -325,34 +345,25 @@
 
           for (const bondData of cusipsToProcess) {
             try {
-              // 計算面值
               const faceValue = investmentAmountNum / (buyPriceNum / 100);
               console.log(`Face Value for ${bondData.cusip}: ${faceValue}`);
 
-              // 計算應計利息
               const lastPaymentDate = getLastPaymentDate(buyDateObj, bondData.paymentDates);
               const daysAccrued = differenceInDays(buyDateObj, lastPaymentDate);
               const semiAnnualCoupon = (bondData.couponRate / 100) * faceValue / 2;
               const accruedInterest = (semiAnnualCoupon / 180) * daysAccrued;
               console.log(`Accrued Interest for ${bondData.cusip}: ${accruedInterest}, Days: ${daysAccrued}`);
 
-              // 計算收到的利息支付
               const paymentDates = getPaymentDatesBetween(buyDateObj, sellDateObj, bondData.paymentDates);
               const totalInterestReceived = semiAnnualCoupon * paymentDates.length;
               console.log(`Payment Dates for ${bondData.cusip}:`, paymentDates, `Total Interest: ${totalInterestReceived}`);
 
-              // 淨利息收入
               const netInterest = totalInterestReceived - accruedInterest;
-
-              // 計算資本利得
               const capitalGain = (sellPriceNum - buyPriceNum) * (faceValue / 100);
-
-              // 總回報
               const totalReturn = netInterest + capitalGain;
               const returnPercentage = (totalReturn / investmentAmountNum) * 100;
               const hkdReturn = exchangeRateNum ? (totalReturn * exchangeRateNum).toFixed(2) : null;
 
-              // 計算步驟
               const steps = [
                 `1. ${language === 'zh' ? '面值 = 投資金額 ÷ (買入價格 ÷ 100)' : 'Face Value = Investment Amount ÷ (Buy Price ÷ 100)'} = ${investmentAmountNum} ÷ (${buyPriceNum} ÷ 100) = ${faceValue.toFixed(2)} USD`,
                 `2. ${language === 'zh' ? '半年票息 = (票面利率 ÷ 100) × 面值 ÷ 2' : 'Semi-Annual Coupon = (Coupon Rate ÷ 100) × Face Value ÷ 2'} = (${bondData.couponRate} ÷ 100) × ${faceValue.toFixed(2)} ÷ 2 = ${semiAnnualCoupon.toFixed(2)} USD`,
@@ -379,7 +390,6 @@
               };
               resultsArray.push(result);
 
-              // 儲存到歷史記錄
               setHistory(prev => {
                 const newHistory = [...prev, { ...result, buyDate, sellDate, timestamp: new Date().toISOString() }];
                 localStorage.setItem('calcHistory', JSON.stringify(newHistory));
@@ -481,253 +491,366 @@
         }
       };
 
-      return (
-        <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold text-center">{translations[language].title}</h1>
-            <button
-              onClick={toggleLanguage}
-              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-            >
-              {translations[language].language}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].cusip}</label>
-              <input
-                type="text"
-                value={cusipInput}
-                onChange={(e) => setCusipInput(e.target.value)}
-                placeholder="e.g., 91282CLW9,912810TL3"
-                className="mt-1 block w-full p-2 border rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].issueDate}</label>
-              <input
-                type="text"
-                value={issueDateInput}
-                onChange={(e) => setIssueDateInput(e.target.value)}
-                placeholder="e.g., 2024-11-15,2024-05-15"
-                className="mt-1 block w-full p-2 border rounded-md"
-              />
-            </div>
-          </div>
-          <div className="flex justify-center mt-4">
-            <button
-              onClick={checkCusip}
-              className="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600"
-            >
-              {translations[language].checkCusip}
-            </button>
-          </div>
-          {error && <p className="text-red-500 text-center mt-4">{error}</p>}
-          {isCusipValid && (
-            <p className="text-green-500 text-center mt-4">{translations[language].cusipValid}</p>
-          )}
-          {isManualInput && invalidCusips.length > 0 && (
-            <p className="text-yellow-500 text-center mt-4">{translations[language].manualInput} {invalidCusips.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}</p>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].buyPrice}</label>
-              <input
-                type="number"
-                value={buyPrice}
-                onChange={(e) => setBuyPrice(e.target.value)}
-                placeholder="e.g., 96.867"
-                className="mt-1 block w-full p-2 border rounded-md"
-                step="0.001"
-                disabled={!isCusipValid && !isManualInput}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].buyDate}</label>
-              <input
-                type="date"
-                value={buyDate}
-                onChange={(e) => setBuyDate(e.target.value)}
-                className="mt-1 block w-full p-2 border rounded-md"
-                disabled={!isCusipValid && !isManualInput}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].investmentAmount}</label>
-              <input
-                type="number"
-                value={investmentAmount}
-                onChange={(e) => setInvestmentAmount(e.target.value)}
-                placeholder="e.g., 21000"
-                className="mt-1 block w-full p-2 border rounded-md"
-                step="0.01"
-                disabled={!isCusipValid && !isManualInput}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].couponRate}</label>
-              <input
-                type="number"
-                value={couponRate}
-                onChange={(e) => setCouponRate(e.target.value)}
-                placeholder="e.g., 4.25"
-                className="mt-1 block w-full p-2 border rounded-md"
-                step="0.01"
-                disabled={isCusipValid && bondDataList.length > 0}
-              />
-              {bondDataList.length > 0 && isCusipValid && (
-                <p className="text-sm text-gray-600 mt-1">
-                  {language === 'zh' ? '到期日期' : 'Maturity Dates'}: {bondDataList.map(b => `${b.cusip}: ${b.maturityDate}`).join(', ')}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].sellDate}</label>
-              <input
-                type="date"
-                value={sellDate}
-                onChange={(e) => setSellDate(e.target.value)}
-                className="mt-1 block w-full p-2 border rounded-md"
-                disabled={!isCusipValid && !isManualInput}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].sellPrice}</label>
-              <input
-                type="number"
-                value={sellPrice}
-                onChange={(e) => setSellPrice(e.target.value)}
-                placeholder="e.g., 98.963"
-                className="mt-1 block w-full p-2 border rounded-md"
-                step="0.001"
-                disabled={!isCusipValid && !isManualInput}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{translations[language].exchangeRate}</label>
-              <input
-                type="number"
-                value={exchangeRate}
-                onChange={(e) => setExchangeRate(e.target.value)}
-                placeholder="e.g., 7.8"
-                className="mt-1 block w-full p-2 border rounded-md"
-                step="0.01"
-                disabled={!isCusipValid && !isManualInput}
-              />
-            </div>
-          </div>
-          <div className="flex justify-center mt-6 space-x-4">
-            <button
-              onClick={calculateReturns}
-              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-              disabled={!isCusipValid && !isManualInput}
-            >
-              {translations[language].calculate}
-            </button>
-            {results.length > 0 && (
-              <button
-                onClick={exportToCSV}
-                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-              >
-                {translations[language].exportCSV}
-              </button>
-            )}
-          </div>
-          {results.length > 0 && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-md">
-              <h2 className="text-lg font-semibold">{translations[language].multipleCusips}</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border border-gray-200">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-2">{translations[language].cusip}</th>
-                      <th className="p-2">{translations[language].issueDate}</th>
-                      <th className="p-2">{translations[language].faceValue}</th>
-                      <th className="p-2">{translations[language].accruedInterest}</th>
-                      <th className="p-2">{translations[language].netInterest}</th>
-                      <th className="p-2">{translations[language].capitalGain}</th>
-                      <th className="p-2">{translations[language].totalReturn}</th>
-                      <th className="p-2">{translations[language].returnPercentage}</th>
-                      {language === 'zh' && <th className="p-2">{translations[language].hkdReturn}</th>}
-                      <th className="p-2">{translations[language].calculationSteps}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((result, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="p-2">{result.cusip}</td>
-                        <td className="p-2">{result.issueDate}</td>
-                        <td className="p-2">${result.faceValue}</td>
-                        <td className="p-2">${result.accruedInterest}</td>
-                        <td className="p-2">${result.netInterest}</td>
-                        <td className="p-2">${result.capitalGain}</td>
-                        <td className="p-2">${result.totalReturn}</td>
-                        <td className="p-2">{result.returnPercentage}%</td>
-                        {language === 'zh' && result.hkdReturn && <td className="p-2">HK${result.hkdReturn}</td>}
-                        <td className="p-2">
-                          <ul className="list-disc pl-5 text-sm">
-                            {result.steps.map((step, idx) => (
-                              <li key={idx}>{step}</li>
-                            ))}
-                          </ul>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-sm text-gray-600 mt-2">{translations[language].taxNote}</p>
-            </div>
-          )}
-          {history.length > 0 && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-md">
-              <h2 className="text-lg font-semibold">{translations[language].history}</h2>
-              <button
-                onClick={clearHistory}
-                className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 mb-4"
-              >
-                {translations[language].clearHistory}
-              </button>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border border-gray-200">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-2">{translations[language].cusip}</th>
-                      <th className="p-2">{translations[language].issueDate}</th>
-                      <th className="p-2">{translations[language].date}</th>
-                      <th className="p-2">{translations[language].faceValue}</th>
-                      <th className="p-2">{translations[language].totalReturn}</th>
-                      <th className="p-2">{translations[language].returnPercentage}</th>
-                      {language === 'zh' && <th className="p-2">{translations[language].hkdReturn}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((entry, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="p-2">{entry.cusip}</td>
-                        <td className="p-2">{entry.issueDate}</td>
-                        <td className="p-2">{new Date(entry.timestamp).toLocaleString()}</td>
-                        <td className="p-2">${entry.faceValue}</td>
-                        <td className="p-2">${entry.totalReturn}</td>
-                        <td className="p-2">{entry.returnPercentage}%</td>
-                        {language === 'zh' && entry.hkdReturn && <td className="p-2">HK${entry.hkdReturn}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
+      // 渲染 UI
+      return React.createElement(
+        'div',
+        { className: 'max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg' },
+        [
+          React.createElement(
+            'div',
+            { className: 'flex justify-between items-center mb-4', key: 'header' },
+            [
+              React.createElement('h1', { className: 'text-2xl font-bold text-center' }, translations[language].title),
+              React.createElement(
+                'button',
+                {
+                  onClick: toggleLanguage,
+                  className: 'bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600'
+                },
+                translations[language].language
+              )
+            ]
+          ),
+          React.createElement(
+            'div',
+            { className: 'grid grid-cols-1 md:grid-cols-2 gap-4', key: 'inputs' },
+            [
+              React.createElement(
+                'div',
+                { key: 'cusip' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].cusip),
+                  React.createElement('input', {
+                    type: 'text',
+                    value: cusipInput,
+                    onChange: e => setCusipInput(e.target.value),
+                    placeholder: 'e.g., 91282CLW9,912810TL3',
+                    className: 'mt-1 block w-full p-2 border rounded-md'
+                  })
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'issueDate' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].issueDate),
+                  React.createElement('input', {
+                    type: 'text',
+                    value: issueDateInput,
+                    onChange: e => setIssueDateInput(e.target.value),
+                    placeholder: 'e.g., 2024-11-15,2024-05-15',
+                    className: 'mt-1 block w-full p-2 border rounded-md'
+                  })
+                ]
+              )
+            ]
+          ),
+          React.createElement(
+            'div',
+            { className: 'flex justify-center mt-4', key: 'checkButton' },
+            React.createElement(
+              'button',
+              {
+                onClick: checkCusip,
+                className: 'bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600'
+              },
+              translations[language].checkCusip
+            )
+          ),
+          error && React.createElement('p', { className: 'text-red-500 text-center mt-4', key: 'error' }, error),
+          isCusipValid && React.createElement('p', { className: 'text-green-500 text-center mt-4', key: 'cusipValid' }, translations[language].cusipValid),
+          isManualInput && invalidCusips.length > 0 && React.createElement(
+            'p',
+            { className: 'text-yellow-500 text-center mt-4', key: 'manualInput' },
+            `${translations[language].manualInput} ${invalidCusips.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}`
+          ),
+          React.createElement(
+            'div',
+            { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 mt-4', key: 'formInputs' },
+            [
+              React.createElement(
+                'div',
+                { key: 'buyPrice' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].buyPrice),
+                  React.createElement('input', {
+                    type: 'number',
+                    value: buyPrice,
+                    onChange: e => setBuyPrice(e.target.value),
+                    placeholder: 'e.g., 96.867',
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    step: '0.001',
+                    disabled: !isCusipValid && !isManualInput
+                  })
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'buyDate' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].buyDate),
+                  React.createElement('input', {
+                    type: 'date',
+                    value: buyDate,
+                    onChange: e => setBuyDate(e.target.value),
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    disabled: !isCusipValid && !isManualInput
+                  })
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'investmentAmount' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].investmentAmount),
+                  React.createElement('input', {
+                    type: 'number',
+                    value: investmentAmount,
+                    onChange: e => setInvestmentAmount(e.target.value),
+                    placeholder: 'e.g., 21000',
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    step: '0.01',
+                    disabled: !isCusipValid && !isManualInput
+                  })
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'couponRate' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].couponRate),
+                  React.createElement('input', {
+                    type: 'number',
+                    value: couponRate,
+                    onChange: e => setCouponRate(e.target.value),
+                    placeholder: 'e.g., 4.25',
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    step: '0.01',
+                    disabled: isCusipValid && bondDataList.length > 0
+                  }),
+                  bondDataList.length > 0 && isCusipValid && React.createElement(
+                    'p',
+                    { className: 'text-sm text-gray-600 mt-1' },
+                    `${language === 'zh' ? '到期日期' : 'Maturity Dates'}: ${bondDataList.map(b => `${b.cusip}: ${b.maturityDate}`).join(', ')}`
+                  )
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'sellDate' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].sellDate),
+                  React.createElement('input', {
+                    type: 'date',
+                    value: sellDate,
+                    onChange: e => setSellDate(e.target.value),
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    disabled: !isCusipValid && !isManualInput
+                  })
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'sellPrice' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].sellPrice),
+                  React.createElement('input', {
+                    type: 'number',
+                    value: sellPrice,
+                    onChange: e => setSellPrice(e.target.value),
+                    placeholder: 'e.g., 98.963',
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    step: '0.001',
+                    disabled: !isCusipValid && !isManualInput
+                  })
+                ]
+              ),
+              React.createElement(
+                'div',
+                { key: 'exchangeRate' },
+                [
+                  React.createElement('label', { className: 'block text-sm font-medium text-gray-700' }, translations[language].exchangeRate),
+                  React.createElement('input', {
+                    type: 'number',
+                    value: exchangeRate,
+                    onChange: e => setExchangeRate(e.target.value),
+                    placeholder: 'e.g., 7.8',
+                    className: 'mt-1 block w-full p-2 border rounded-md',
+                    step: '0.01',
+                    disabled: !isCusipValid && !isManualInput
+                  })
+                ]
+              )
+            ]
+          ),
+          React.createElement(
+            'div',
+            { className: 'flex justify-center mt-6 space-x-4', key: 'buttons' },
+            [
+              React.createElement(
+                'button',
+                {
+                  onClick: calculateReturns,
+                  className: 'bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600',
+                  disabled: !isCusipValid && !isManualInput,
+                  key: 'calculate'
+                },
+                translations[language].calculate
+              ),
+              results.length > 0 && React.createElement(
+                'button',
+                {
+                  onClick: exportToCSV,
+                  className: 'bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600',
+                  key: 'export'
+                },
+                translations[language].exportCSV
+              )
+            ]
+          ),
+          results.length > 0 && React.createElement(
+            'div',
+            { className: 'mt-6 p-4 bg-gray-50 rounded-md', key: 'results' },
+            [
+              React.createElement('h2', { className: 'text-lg font-semibold' }, translations[language].multipleCusips),
+              React.createElement(
+                'div',
+                { className: 'overflow-x-auto' },
+                React.createElement(
+                  'table',
+                  { className: 'w-full text-sm text-left border border-gray-200' },
+                  [
+                    React.createElement(
+                      'thead',
+                      { className: 'bg-gray-100' },
+                      React.createElement(
+                        'tr',
+                        null,
+                        [
+                          React.createElement('th', { className: 'p-2' }, translations[language].cusip),
+                          React.createElement('th', { className: 'p-2' }, translations[language].issueDate),
+                          React.createElement('th', { className: 'p-2' }, translations[language].faceValue),
+                          React.createElement('th', { className: 'p-2' }, translations[language].accruedInterest),
+                          React.createElement('th', { className: 'p-2' }, translations[language].netInterest),
+                          React.createElement('th', { className: 'p-2' }, translations[language].capitalGain),
+                          React.createElement('th', { className: 'p-2' }, translations[language].totalReturn),
+                          React.createElement('th', { className: 'p-2' }, translations[language].returnPercentage),
+                          language === 'zh' && React.createElement('th', { className: 'p-2' }, translations[language].hkdReturn),
+                          React.createElement('th', { className: 'p-2' }, translations[language].calculationSteps)
+                        ]
+                      )
+                    ),
+                    React.createElement(
+                      'tbody',
+                      null,
+                      results.map((result, index) =>
+                        React.createElement(
+                          'tr',
+                          { className: 'border-b', key: index },
+                          [
+                            React.createElement('td', { className: 'p-2' }, result.cusip),
+                            React.createElement('td', { className: 'p-2' }, result.issueDate),
+                            React.createElement('td', { className: 'p-2' }, `$${result.faceValue}`),
+                            React.createElement('td', { className: 'p-2' }, `$${result.accruedInterest}`),
+                            React.createElement('td', { className: 'p-2' }, `$${result.netInterest}`),
+                            React.createElement('td', { className: 'p-2' }, `$${result.capitalGain}`),
+                            React.createElement('td', { className: 'p-2' }, `$${result.totalReturn}`),
+                            React.createElement('td', { className: 'p-2' }, `${result.returnPercentage}%`),
+                            language === 'zh' && result.hkdReturn && React.createElement('td', { className: 'p-2' }, `HK$${result.hkdReturn}`),
+                            React.createElement(
+                              'td',
+                              { className: 'p-2' },
+                              React.createElement(
+                                'ul',
+                                { className: 'list-disc pl-5 text-sm' },
+                                result.steps.map((step, idx) => React.createElement('li', { key: idx }, step))
+                              )
+                            )
+                          ]
+                        )
+                      )
+                    )
+                  ]
+                )
+              ),
+              React.createElement('p', { className: 'text-sm text-gray-600 mt-2' }, translations[language].taxNote)
+            ]
+          ),
+          history.length > 0 && React.createElement(
+            'div',
+            { className: 'mt-6 p-4 bg-gray-50 rounded-md', key: 'history' },
+            [
+              React.createElement('h2', { className: 'text-lg font-semibold' }, translations[language].history),
+              React.createElement(
+                'button',
+                {
+                  onClick: clearHistory,
+                  className: 'bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 mb-4'
+                },
+                translations[language].clearHistory
+              ),
+              React.createElement(
+                'div',
+                { className: 'overflow-x-auto' },
+                React.createElement(
+                  'table',
+                  { className: 'w-full text-sm text-left border border-gray-200' },
+                  [
+                    React.createElement(
+                      'thead',
+                      { className: 'bg-gray-100' },
+                      React.createElement(
+                        'tr',
+                        null,
+                        [
+                          React.createElement('th', { className: 'p-2' }, translations[language].cusip),
+                          React.createElement('th', { className: 'p-2' }, translations[language].issueDate),
+                          React.createElement('th', { className: 'p-2' }, translations[language].date),
+                          React.createElement('th', { className: 'p-2' }, translations[language].faceValue),
+                          React.createElement('th', { className: 'p-2' }, translations[language].totalReturn),
+                          React.createElement('th', { className: 'p-2' }, translations[language].returnPercentage),
+                          language === 'zh' && React.createElement('th', { className: 'p-2' }, translations[language].hkdReturn)
+                        ]
+                      )
+                    ),
+                    React.createElement(
+                      'tbody',
+                      null,
+                      history.map((entry, index) =>
+                        React.createElement(
+                          'tr',
+                          { className: 'border-b', key: index },
+                          [
+                            React.createElement('td', { className: 'p-2' }, entry.cusip),
+                            React.createElement('td', { className: 'p-2' }, entry.issueDate),
+                            React.createElement('td', { className: 'p-2' }, new Date(entry.timestamp).toLocaleString()),
+                            React.createElement('td', { className: 'p-2' }, `$${entry.faceValue}`),
+                            React.createElement('td', { className: 'p-2' }, `$${entry.totalReturn}`),
+                            React.createElement('td', { className: 'p-2' }, `${entry.returnPercentage}%`),
+                            language === 'zh' && entry.hkdReturn && React.createElement('td', { className: 'p-2' }, `HK$${entry.hkdReturn}`)
+                          ]
+                        )
+                      )
+                    )
+                  ]
+                )
+              )
+            ]
+          )
+        ]
       );
     };
 
     // 渲染應用
     try {
-      ReactDOM.render(<BondCalculator />, document.getElementById('root'));
+      ReactDOM.render(
+        React.createElement(ErrorBoundary, null, React.createElement(BondCalculator)),
+        document.getElementById('root')
+      );
       console.log('Application rendered successfully');
     } catch (err) {
       console.error('Render Error:', err.message);
+      document.getElementById('root').innerHTML = '<div class="text-red-500 text-center p-4">Failed to render application. Please check console for errors.</div>';
     }
   </script>
 </body>
