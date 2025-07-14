@@ -75,8 +75,8 @@
     const translations = {
       zh: {
         title: '美國國債計算器',
-        cusip: 'CUSIP 編號',
-        issueDate: '發行日期',
+        cusip: 'CUSIP 編號（以逗號分隔）',
+        issueDate: '發行日期（以逗號分隔）',
         checkCusip: '檢查 CUSIP',
         buyPrice: '買入價格（每100美元面值）',
         buyDate: '買入日期',
@@ -99,23 +99,23 @@
         calculationSteps: '計算步驟',
         history: '歷史記錄',
         date: '日期',
-        invalidCusip: '無效的 CUSIP 編號或發行日期，請檢查後重試',
-        fillAllFields: '請填寫所有欄位',
+        invalidCusip: '以下 CUSIP 或發行日期無效：',
+        fillAllFields: '請填寫所有欄位，包括 CUSIP 和發行日期',
         invalidNumbers: '請輸入有效的價格、投資金額、票面利率或匯率',
         invalidDateFormat: '無效的日期格式',
         sellDateAfterBuy: '賣出日期必須晚於買入日期',
         taxNote: '提示：利息收入需繳美國聯邦所得稅，香港無本地稅。請諮詢稅務顧問。',
         language: 'English',
-        cusipValid: 'CUSIP 和發行日期有效，請繼續輸入資料',
-        cusipInvalid: 'CUSIP 或發行日期無效，請檢查',
+        cusipValid: '所有 CUSIP 和發行日期有效，請繼續輸入資料',
+        cusipInvalid: '部分或全部 CUSIP 或發行日期無效，請檢查',
         networkError: '網路錯誤，無法連接到 TreasuryDirect，請稍後重試或手動輸入票面利率',
-        manualInput: '無法獲取資料，請手動輸入票面利率',
-        multipleCusips: '多 CUSIP 查詢結果'
+        manualInput: '無法獲取以下 CUSIP 資料，請手動輸入票面利率：',
+        multipleCusips: '多 CUSIP 比較結果'
       },
       en: {
         title: 'U.S. Treasury Bond Calculator',
-        cusip: 'CUSIP Number',
-        issueDate: 'Issue Date',
+        cusip: 'CUSIP Number (comma-separated)',
+        issueDate: 'Issue Date (comma-separated)',
         checkCusip: 'Check CUSIP',
         buyPrice: 'Buy Price (per $100 face value)',
         buyDate: 'Buy Date',
@@ -138,18 +138,18 @@
         calculationSteps: 'Calculation Steps',
         history: 'Calculation History',
         date: 'Date',
-        invalidCusip: 'Invalid CUSIP number or issue date, please check and try again',
-        fillAllFields: 'Please fill in all fields',
+        invalidCusip: 'The following CUSIP or issue date is invalid:',
+        fillAllFields: 'Please fill in all fields, including CUSIP and issue date',
         invalidNumbers: 'Please enter valid numbers for prices, investment amount, coupon rate, or exchange rate',
         invalidDateFormat: 'Invalid date format',
         sellDateAfterBuy: 'Sell date must be after buy date',
         taxNote: 'Note: Interest income is subject to U.S. federal income tax; no local tax in Hong Kong. Consult a tax advisor.',
         language: '繁體中文',
-        cusipValid: 'CUSIP and issue date are valid, please proceed with data entry',
-        cusipInvalid: 'Invalid CUSIP or issue date, please check',
+        cusipValid: 'All CUSIP and issue dates are valid, please proceed with data entry',
+        cusipInvalid: 'Some or all CUSIP or issue dates are invalid, please check',
         networkError: 'Network error, unable to connect to TreasuryDirect, please try again later or enter coupon rate manually',
-        manualInput: 'Unable to fetch data, please enter coupon rate manually',
-        multipleCusips: 'Multiple CUSIP Results'
+        manualInput: 'Unable to fetch data for the following CUSIP, please enter coupon rate manually:',
+        multipleCusips: 'Multiple CUSIP Comparison Results'
       }
     };
 
@@ -160,6 +160,7 @@
     };
 
     const formatDate = (date) => {
+      if (!(date instanceof Date) || isNaN(date)) return 'Invalid Date';
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -169,8 +170,8 @@
     const BondCalculator = () => {
       // 狀態管理
       const [language, setLanguage] = useState('zh');
-      const [cusip, setCusip] = useState('91282CLW9');
-      const [issueDate, setIssueDate] = useState('2024-11-15');
+      const [cusipInput, setCusipInput] = useState('91282CLW9');
+      const [issueDateInput, setIssueDateInput] = useState('2024-11-15');
       const [buyPrice, setBuyPrice] = useState('');
       const [buyDate, setBuyDate] = useState('');
       const [investmentAmount, setInvestmentAmount] = useState('');
@@ -178,79 +179,123 @@
       const [sellDate, setSellDate] = useState('');
       const [sellPrice, setSellPrice] = useState('');
       const [exchangeRate, setExchangeRate] = useState('');
-      const [results, setResults] = useState(null);
+      const [results, setResults] = useState([]);
       const [error, setError] = useState('');
       const [history, setHistory] = useState(JSON.parse(localStorage.getItem('calcHistory')) || []);
-      const [bondData, setBondData] = useState(null);
+      const [bondDataList, setBondDataList] = useState([]);
       const [isCusipValid, setIsCusipValid] = useState(false);
       const [isManualInput, setIsManualInput] = useState(false);
+      const [invalidCusips, setInvalidCusips] = useState([]);
 
       // 語言切換
       const toggleLanguage = () => {
-        setLanguage(language === 'zh' ? 'en' : 'zh');
+        setLanguage(prev => (prev === 'zh' ? 'en' : 'zh'));
+        console.log('Language toggled to:', language === 'zh' ? 'en' : 'zh');
       };
 
-      // 檢查 CUSIP 和發行日期
+      // 檢查多個 CUSIP 和發行日期
       const checkCusip = async () => {
         setError('');
-        setBondData(null);
+        setBondDataList([]);
         setIsCusipValid(false);
         setIsManualInput(false);
+        setInvalidCusips([]);
+        console.log('Checking CUSIPs:', cusipInput, 'Issue Dates:', issueDateInput);
 
-        if (!cusip || !issueDate) {
+        if (!cusipInput || !issueDateInput) {
           setError(translations[language].fillAllFields);
+          console.error('Missing CUSIP or issue date input');
           return;
         }
 
-        try {
-          const response = await fetch(
-            `https://www.treasurydirect.gov/TA_WS/securities/search?cusip=${cusip}&issueDate=${issueDate}&format=json`
-          );
-          if (!response.ok) {
-            if (response.status === 404) {
-              setError(translations[language].invalidCusip);
-              setIsManualInput(true);
-              return;
+        const cusips = cusipInput.split(',').map(c => c.trim()).filter(c => c);
+        const issueDates = issueDateInput.split(',').map(d => d.trim()).filter(d => d);
+
+        if (cusips.length !== issueDates.length) {
+          setError(translations[language].fillAllFields);
+          console.error('CUSIP and issue date arrays length mismatch:', cusips.length, issueDates.length);
+          return;
+        }
+
+        if (cusips.length === 0) {
+          setError(translations[language].fillAllFields);
+          console.error('No valid CUSIPs provided');
+          return;
+        }
+
+        const bondDataResults = [];
+        const invalid = [];
+
+        for (let i = 0; i < cusips.length; i++) {
+          const cusip = cusips[i];
+          const issueDate = issueDates[i];
+
+          console.log(`Fetching data for CUSIP: ${cusip}, Issue Date: ${issueDate}`);
+          try {
+            const response = await fetch(
+              `https://www.treasurydirect.gov/TA_WS/securities/search?cusip=${encodeURIComponent(cusip)}&issueDate=${encodeURIComponent(issueDate)}&format=json`
+            );
+            if (!response.ok) {
+              invalid.push({ cusip, issueDate, reason: `HTTP ${response.status}` });
+              console.warn(`HTTP error for ${cusip}: ${response.status}`);
+              continue;
             }
-            throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (data && Array.isArray(data) && data.length > 0) {
+              bondDataResults.push({
+                cusip,
+                issueDate,
+                couponRate: data[0].interestRate || 0,
+                maturityDate: data[0].maturityDate || 'N/A',
+                paymentDates: data[0].firstInterestPayment ? [data[0].firstInterestPayment.split('-').slice(1).join('-')] : ['05-15', '11-15']
+              });
+              console.log(`Success for ${cusip}:`, data[0]);
+            } else {
+              invalid.push({ cusip, issueDate, reason: 'Invalid CUSIP or issue date' });
+              console.warn(`No data returned for ${cusip}`);
+            }
+          } catch (err) {
+            invalid.push({ cusip, issueDate, reason: 'Network error' });
+            console.error(`Network error for ${cusip}:`, err.message);
           }
-          const data = await response.json();
-          if (data.length > 0) {
-            setBondData({
-              couponRate: data[0].interestRate,
-              maturityDate: data[0].maturityDate,
-              paymentDates: [data[0].firstInterestPayment.split('-').slice(1).join('-')]
-            });
-            setCouponRate(data[0].interestRate.toString());
-            setIsCusipValid(true);
-            setError(translations[language].cusipValid);
-          } else {
-            setError(translations[language].invalidCusip);
-            setIsManualInput(true);
-          }
-        } catch (err) {
-          setError(translations[language].networkError);
+        }
+
+        setBondDataList(bondDataResults);
+        setInvalidCusips(invalid);
+
+        if (invalid.length > 0 && bondDataResults.length === 0) {
+          setError(`${translations[language].invalidCusip} ${invalid.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}`);
           setIsManualInput(true);
-          console.error('Fetch Error:', err.message);
+          console.error('All CUSIPs invalid:', invalid);
+        } else if (invalid.length > 0) {
+          setError(`${translations[language].manualInput} ${invalid.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}`);
+          setIsManualInput(true);
+          setIsCusipValid(true);
+          console.warn('Some CUSIPs invalid:', invalid);
+        } else {
+          setIsCusipValid(true);
+          setError(translations[language].cusipValid);
+          console.log('All CUSIPs valid:', bondDataResults);
         }
       };
 
       // 計算應計利息、淨利息和資本利得
       const calculateReturns = () => {
         setError('');
-        setResults(null);
+        setResults([]);
+        console.log('Calculating returns...');
 
         // 輸入驗證
         try {
           if (!isCusipValid && !isManualInput) {
             throw new Error(translations[language].cusipInvalid);
           }
-          if (!buyPrice || !buyDate || !investmentAmount || !couponRate || !sellDate || !sellPrice) {
+          if (!buyPrice || !buyDate || !investmentAmount || (!couponRate && isManualInput) || !sellDate || !sellPrice) {
             throw new Error(translations[language].fillAllFields);
           }
           const buyPriceNum = parseFloat(buyPrice);
           const investmentAmountNum = parseFloat(investmentAmount);
-          const couponRateNum = parseFloat(couponRate);
+          const couponRateNum = parseFloat(isManualInput ? couponRate : bondDataList[0]?.couponRate || couponRate);
           const sellPriceNum = parseFloat(sellPrice);
           const exchangeRateNum = exchangeRate ? parseFloat(exchangeRate) : null;
           if (
@@ -271,63 +316,83 @@
             throw new Error(translations[language].sellDateAfterBuy);
           }
 
-          // 計算面值
-          const faceValue = investmentAmountNum / (buyPriceNum / 100);
-          console.log('Face Value:', faceValue);
+          const resultsArray = [];
+          const cusipsToProcess = isManualInput && !isCusipValid
+            ? [{ cusip: cusipInput.split(',')[0].trim(), issueDate: issueDateInput.split(',')[0].trim(), couponRate: couponRateNum, paymentDates: ['05-15', '11-15'] }]
+            : bondDataList;
 
-          // 計算應計利息
-          const lastPaymentDate = getLastPaymentDate(buyDateObj, bondData ? bondData.paymentDates : ['05-15', '11-15']);
-          const daysAccrued = differenceInDays(buyDateObj, lastPaymentDate);
-          const semiAnnualCoupon = (couponRateNum / 100) * faceValue / 2;
-          const accruedInterest = (semiAnnualCoupon / 180) * daysAccrued;
-          console.log('Accrued Interest:', accruedInterest, 'Days:', daysAccrued);
+          console.log('Processing CUSIPs:', cusipsToProcess);
 
-          // 計算收到的利息支付
-          const paymentDates = getPaymentDatesBetween(buyDateObj, sellDateObj, bondData ? bondData.paymentDates : ['05-15', '11-15']);
-          const totalInterestReceived = semiAnnualCoupon * paymentDates.length;
-          console.log('Payment Dates:', paymentDates, 'Total Interest:', totalInterestReceived);
+          for (const bondData of cusipsToProcess) {
+            try {
+              // 計算面值
+              const faceValue = investmentAmountNum / (buyPriceNum / 100);
+              console.log(`Face Value for ${bondData.cusip}: ${faceValue}`);
 
-          // 淨利息收入
-          const netInterest = totalInterestReceived - accruedInterest;
+              // 計算應計利息
+              const lastPaymentDate = getLastPaymentDate(buyDateObj, bondData.paymentDates);
+              const daysAccrued = differenceInDays(buyDateObj, lastPaymentDate);
+              const semiAnnualCoupon = (bondData.couponRate / 100) * faceValue / 2;
+              const accruedInterest = (semiAnnualCoupon / 180) * daysAccrued;
+              console.log(`Accrued Interest for ${bondData.cusip}: ${accruedInterest}, Days: ${daysAccrued}`);
 
-          // 計算資本利得
-          const capitalGain = (sellPriceNum - buyPriceNum) * (faceValue / 100);
+              // 計算收到的利息支付
+              const paymentDates = getPaymentDatesBetween(buyDateObj, sellDateObj, bondData.paymentDates);
+              const totalInterestReceived = semiAnnualCoupon * paymentDates.length;
+              console.log(`Payment Dates for ${bondData.cusip}:`, paymentDates, `Total Interest: ${totalInterestReceived}`);
 
-          // 總回報
-          const totalReturn = netInterest + capitalGain;
-          const returnPercentage = (totalReturn / investmentAmountNum) * 100;
-          const hkdReturn = exchangeRateNum ? (totalReturn * exchangeRateNum).toFixed(2) : null;
+              // 淨利息收入
+              const netInterest = totalInterestReceived - accruedInterest;
 
-          // 計算步驟
-          const steps = [
-            `1. ${language === 'zh' ? '面值 = 投資金額 ÷ (買入價格 ÷ 100)' : 'Face Value = Investment Amount ÷ (Buy Price ÷ 100)'} = ${investmentAmountNum} ÷ (${buyPriceNum} ÷ 100) = ${faceValue.toFixed(2)} USD`,
-            `2. ${language === 'zh' ? '半年票息 = (票面利率 ÷ 100) × 面值 ÷ 2' : 'Semi-Annual Coupon = (Coupon Rate ÷ 100) × Face Value ÷ 2'} = (${couponRateNum} ÷ 100) × ${faceValue.toFixed(2)} ÷ 2 = ${semiAnnualCoupon.toFixed(2)} USD`,
-            `3. ${language === 'zh' ? '應計利息天數 = 從' : 'Accrued Interest Days = Days from'} ${formatDate(lastPaymentDate)} ${language === 'zh' ? '到' : 'to'} ${buyDate} = ${daysAccrued} ${language === 'zh' ? '天' : 'days'}`,
-            `4. ${language === 'zh' ? '應計利息 = (半年票息 ÷ 180) × 應計天數' : 'Accrued Interest = (Semi-Annual Coupon ÷ 180) × Accrued Days'} = (${semiAnnualCoupon.toFixed(2)} ÷ 180) × ${daysAccrued} = ${accruedInterest.toFixed(2)} USD`,
-            `5. ${language === 'zh' ? '收到的利息支付 = 半年票息 × 付息次數' : 'Interest Payments Received = Semi-Annual Coupon × Number of Payments'} (${paymentDates.length}) = ${semiAnnualCoupon.toFixed(2)} × ${paymentDates.length} = ${totalInterestReceived.toFixed(2)} USD`,
-            `6. ${language === 'zh' ? '淨利息 = 收到的利息 - 應計利息' : 'Net Interest = Total Interest Received - Accrued Interest'} = ${totalInterestReceived.toFixed(2)} - ${accruedInterest.toFixed(2)} = ${netInterest.toFixed(2)} USD`,
-            `7. ${language === 'zh' ? '資本利得 = (賣出價格 - 買入價格) × (面值 ÷ 100)' : 'Capital Gain = (Sell Price - Buy Price) × (Face Value ÷ 100)'} = (${sellPriceNum} - ${buyPriceNum}) × (${faceValue.toFixed(2)} ÷ 100) = ${capitalGain.toFixed(2)} USD`,
-            `8. ${language === 'zh' ? '總回報 = 淨利息 + 資本利得' : 'Total Return = Net Interest + Capital Gain'} = ${netInterest.toFixed(2)} + ${capitalGain.toFixed(2)} = ${totalReturn.toFixed(2)} USD`,
-            `9. ${language === 'zh' ? '回報百分比 = (總回報 ÷ 投資金額) × 100' : 'Return Percentage = (Total Return ÷ Investment Amount) × 100'} = (${totalReturn.toFixed(2)} ÷ ${investmentAmountNum}) × 100 = ${returnPercentage.toFixed(2)}%`
-          ];
+              // 計算資本利得
+              const capitalGain = (sellPriceNum - buyPriceNum) * (faceValue / 100);
 
-          // 儲存結果
-          const result = {
-            faceValue: faceValue.toFixed(2),
-            accruedInterest: accruedInterest.toFixed(2),
-            netInterest: netInterest.toFixed(2),
-            capitalGain: capitalGain.toFixed(2),
-            totalReturn: totalReturn.toFixed(2),
-            returnPercentage: returnPercentage.toFixed(2),
-            hkdReturn,
-            steps
-          };
-          setResults(result);
+              // 總回報
+              const totalReturn = netInterest + capitalGain;
+              const returnPercentage = (totalReturn / investmentAmountNum) * 100;
+              const hkdReturn = exchangeRateNum ? (totalReturn * exchangeRateNum).toFixed(2) : null;
 
-          // 儲存到歷史記錄
-          const newHistory = [...history, { ...result, cusip, buyDate, sellDate, issueDate, timestamp: new Date().toISOString() }];
-          setHistory(newHistory);
-          localStorage.setItem('calcHistory', JSON.stringify(newHistory));
+              // 計算步驟
+              const steps = [
+                `1. ${language === 'zh' ? '面值 = 投資金額 ÷ (買入價格 ÷ 100)' : 'Face Value = Investment Amount ÷ (Buy Price ÷ 100)'} = ${investmentAmountNum} ÷ (${buyPriceNum} ÷ 100) = ${faceValue.toFixed(2)} USD`,
+                `2. ${language === 'zh' ? '半年票息 = (票面利率 ÷ 100) × 面值 ÷ 2' : 'Semi-Annual Coupon = (Coupon Rate ÷ 100) × Face Value ÷ 2'} = (${bondData.couponRate} ÷ 100) × ${faceValue.toFixed(2)} ÷ 2 = ${semiAnnualCoupon.toFixed(2)} USD`,
+                `3. ${language === 'zh' ? '應計利息天數 = 從' : 'Accrued Interest Days = Days from'} ${formatDate(lastPaymentDate)} ${language === 'zh' ? '到' : 'to'} ${buyDate} = ${daysAccrued} ${language === 'zh' ? '天' : 'days'}`,
+                `4. ${language === 'zh' ? '應計利息 = (半年票息 ÷ 180) × 應計天數' : 'Accrued Interest = (Semi-Annual Coupon ÷ 180) × Accrued Days'} = (${semiAnnualCoupon.toFixed(2)} ÷ 180) × ${daysAccrued} = ${accruedInterest.toFixed(2)} USD`,
+                `5. ${language === 'zh' ? '收到的利息支付 = 半年票息 × 付息次數' : 'Interest Payments Received = Semi-Annual Coupon × Number of Payments'} (${paymentDates.length}) = ${semiAnnualCoupon.toFixed(2)} × ${paymentDates.length} = ${totalInterestReceived.toFixed(2)} USD`,
+                `6. ${language === 'zh' ? '淨利息 = 收到的利息 - 應計利息' : 'Net Interest = Total Interest Received - Accrued Interest'} = ${totalInterestReceived.toFixed(2)} - ${accruedInterest.toFixed(2)} = ${netInterest.toFixed(2)} USD`,
+                `7. ${language === 'zh' ? '資本利得 = (賣出價格 - 買入價格) × (面值 ÷ 100)' : 'Capital Gain = (Sell Price - Buy Price) × (Face Value ÷ 100)'} = (${sellPriceNum} - ${buyPriceNum}) × (${faceValue.toFixed(2)} ÷ 100) = ${capitalGain.toFixed(2)} USD`,
+                `8. ${language === 'zh' ? '總回報 = 淨利息 + 資本利得' : 'Total Return = Net Interest + Capital Gain'} = ${netInterest.toFixed(2)} + ${capitalGain.toFixed(2)} = ${totalReturn.toFixed(2)} USD`,
+                `9. ${language === 'zh' ? '回報百分比 = (總回報 ÷ 投資金額) × 100' : 'Return Percentage = (Total Return ÷ Investment Amount) × 100'} = (${totalReturn.toFixed(2)} ÷ ${investmentAmountNum}) × 100 = ${returnPercentage.toFixed(2)}%`
+              ];
+
+              const result = {
+                cusip: bondData.cusip,
+                issueDate: bondData.issueDate,
+                faceValue: faceValue.toFixed(2),
+                accruedInterest: accruedInterest.toFixed(2),
+                netInterest: netInterest.toFixed(2),
+                capitalGain: capitalGain.toFixed(2),
+                totalReturn: totalReturn.toFixed(2),
+                returnPercentage: returnPercentage.toFixed(2),
+                hkdReturn,
+                steps
+              };
+              resultsArray.push(result);
+
+              // 儲存到歷史記錄
+              setHistory(prev => {
+                const newHistory = [...prev, { ...result, buyDate, sellDate, timestamp: new Date().toISOString() }];
+                localStorage.setItem('calcHistory', JSON.stringify(newHistory));
+                return newHistory;
+              });
+            } catch (err) {
+              console.error(`Calculation error for ${bondData.cusip}:`, err.message);
+              setError(`Calculation failed for ${bondData.cusip}: ${err.message}`);
+            }
+          }
+
+          setResults(resultsArray);
+          console.log('Calculation results:', resultsArray);
         } catch (err) {
           setError(err.message);
           console.error('Calculation Error:', err.message);
@@ -336,57 +401,84 @@
 
       // 獲取上一個付息日期
       const getLastPaymentDate = (buyDate, paymentDates) => {
-        const buyYear = buyDate.getFullYear();
-        const dates = paymentDates.map(date => {
-          const [month, day] = date.split('-');
-          return new Date(buyYear, month - 1, day);
-        }).filter(date => date <= buyDate);
-        if (dates.length === 0) {
-          const issueDateObj = new Date(issueDate);
-          console.log('Using issue date as fallback:', issueDateObj);
-          return issueDateObj;
+        try {
+          const buyYear = buyDate.getFullYear();
+          const dates = paymentDates.map(date => {
+            const [month, day] = date.split('-');
+            return new Date(buyYear, month - 1, day);
+          }).filter(date => date <= buyDate && !isNaN(date));
+          if (dates.length === 0) {
+            const issueDateObj = new Date(bondDataList[0]?.issueDate || issueDateInput.split(',')[0].trim());
+            console.log('Using issue date as fallback:', issueDateObj);
+            return issueDateObj;
+          }
+          return dates[dates.length - 1];
+        } catch (err) {
+          console.error('Error in getLastPaymentDate:', err.message);
+          return new Date(bondDataList[0]?.issueDate || issueDateInput.split(',')[0].trim());
         }
-        return dates[dates.length - 1];
       };
 
       // 獲取買入到賣出之間的付息日期
       const getPaymentDatesBetween = (buyDate, sellDate, paymentDates) => {
-        const dates = [];
-        let currentYear = buyDate.getFullYear();
-        const endYear = sellDate.getFullYear();
-        while (currentYear <= endYear) {
-          paymentDates.forEach(date => {
-            const [month, day] = date.split('-');
-            const paymentDate = new Date(currentYear, month - 1, day);
-            if (paymentDate > buyDate && paymentDate <= sellDate) {
-              dates.push(paymentDate);
-            }
-          });
-          currentYear++;
+        try {
+          const dates = [];
+          let currentYear = buyDate.getFullYear();
+          const endYear = sellDate.getFullYear();
+          while (currentYear <= endYear) {
+            paymentDates.forEach(date => {
+              const [month, day] = date.split('-');
+              const paymentDate = new Date(currentYear, month - 1, day);
+              if (paymentDate > buyDate && paymentDate <= sellDate && !isNaN(paymentDate)) {
+                dates.push(paymentDate);
+              }
+            });
+            currentYear++;
+          }
+          return dates;
+        } catch (err) {
+          console.error('Error in getPaymentDatesBetween:', err.message);
+          return [];
         }
-        return dates;
       };
 
       // 匯出 CSV
       const exportToCSV = () => {
-        if (!results) return;
-        const csvContent = [
-          `${translations[language].cusip},${translations[language].issueDate},${translations[language].faceValue},${translations[language].accruedInterest},${translations[language].netInterest},${translations[language].capitalGain},${translations[language].totalReturn},${translations[language].returnPercentage},${translations[language].buyDate},${translations[language].sellDate}${language === 'zh' ? `,${translations[language].hkdReturn}` : ''}`,
-          `${cusip},${issueDate},${results.faceValue},${results.accruedInterest},${results.netInterest},${results.capitalGain},${results.totalReturn},${results.returnPercentage}%,${buyDate},${sellDate}${results.hkdReturn ? `,${results.hkdReturn}` : ''}`
-        ].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `bond_calculation_${new Date().toISOString()}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+        if (results.length === 0) {
+          console.warn('No results to export');
+          return;
+        }
+        try {
+          const csvContent = [
+            `${translations[language].cusip},${translations[language].issueDate},${translations[language].faceValue},${translations[language].accruedInterest},${translations[language].netInterest},${translations[language].capitalGain},${translations[language].totalReturn},${translations[language].returnPercentage},${translations[language].buyDate},${translations[language].sellDate}${language === 'zh' ? `,${translations[language].hkdReturn}` : ''}`,
+            ...results.map(result =>
+              `${result.cusip},${result.issueDate},${result.faceValue},${result.accruedInterest},${result.netInterest},${result.capitalGain},${result.totalReturn},${result.returnPercentage}%,${buyDate},${sellDate}${result.hkdReturn ? `,${result.hkdReturn}` : ''}`
+            )
+          ].join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `bond_calculation_${new Date().toISOString()}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+          console.log('CSV exported successfully');
+        } catch (err) {
+          console.error('CSV export error:', err.message);
+          setError('Failed to export CSV');
+        }
       };
 
       // 清除歷史記錄
       const clearHistory = () => {
-        setHistory([]);
-        localStorage.removeItem('calcHistory');
+        try {
+          setHistory([]);
+          localStorage.removeItem('calcHistory');
+          console.log('History cleared');
+        } catch (err) {
+          console.error('Error clearing history:', err.message);
+          setError('Failed to clear history');
+        }
       };
 
       return (
@@ -405,18 +497,19 @@
               <label className="block text-sm font-medium text-gray-700">{translations[language].cusip}</label>
               <input
                 type="text"
-                value={cusip}
-                onChange={(e) => setCusip(e.target.value)}
-                placeholder="e.g., 91282CLW9"
+                value={cusipInput}
+                onChange={(e) => setCusipInput(e.target.value)}
+                placeholder="e.g., 91282CLW9,912810TL3"
                 className="mt-1 block w-full p-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">{translations[language].issueDate}</label>
               <input
-                type="date"
-                value={issueDate}
-                onChange={(e) => setIssueDate(e.target.value)}
+                type="text"
+                value={issueDateInput}
+                onChange={(e) => setIssueDateInput(e.target.value)}
+                placeholder="e.g., 2024-11-15,2024-05-15"
                 className="mt-1 block w-full p-2 border rounded-md"
               />
             </div>
@@ -433,8 +526,8 @@
           {isCusipValid && (
             <p className="text-green-500 text-center mt-4">{translations[language].cusipValid}</p>
           )}
-          {isManualInput && (
-            <p className="text-yellow-500 text-center mt-4">{translations[language].manualInput}</p>
+          {isManualInput && invalidCusips.length > 0 && (
+            <p className="text-yellow-500 text-center mt-4">{translations[language].manualInput} {invalidCusips.map(i => `${i.cusip} (${i.issueDate})`).join(', ')}</p>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
@@ -480,11 +573,11 @@
                 placeholder="e.g., 4.25"
                 className="mt-1 block w-full p-2 border rounded-md"
                 step="0.01"
-                disabled={isCusipValid && bondData}
+                disabled={isCusipValid && bondDataList.length > 0}
               />
-              {bondData && isCusipValid && (
+              {bondDataList.length > 0 && isCusipValid && (
                 <p className="text-sm text-gray-600 mt-1">
-                  {language === 'zh' ? '到期日期' : 'Maturity Date'}: {bondData.maturityDate}
+                  {language === 'zh' ? '到期日期' : 'Maturity Dates'}: {bondDataList.map(b => `${b.cusip}: ${b.maturityDate}`).join(', ')}
                 </p>
               )}
             </div>
@@ -531,7 +624,7 @@
             >
               {translations[language].calculate}
             </button>
-            {results && (
+            {results.length > 0 && (
               <button
                 onClick={exportToCSV}
                 className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
@@ -540,27 +633,50 @@
               </button>
             )}
           </div>
-          {results && (
+          {results.length > 0 && (
             <div className="mt-6 p-4 bg-gray-50 rounded-md">
-              <h2 className="text-lg font-semibold">{translations[language].results}</h2>
-              <p>{translations[language].cusip}: {cusip}</p>
-              <p>{translations[language].issueDate}: {issueDate}</p>
-              <p>{translations[language].faceValue}: ${results.faceValue}</p>
-              <p>{translations[language].accruedInterest}: ${results.accruedInterest}</p>
-              <p>{translations[language].netInterest}: ${results.netInterest}</p>
-              <p>{translations[language].capitalGain}: ${results.capitalGain}</p>
-              <p>{translations[language].totalReturn}: ${results.totalReturn}</p>
-              <p>{translations[language].returnPercentage}: {results.returnPercentage}%</p>
-              {results.hkdReturn && (
-                <p>{translations[language].hkdReturn}: HK${results.hkdReturn}</p>
-              )}
+              <h2 className="text-lg font-semibold">{translations[language].multipleCusips}</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left border border-gray-200">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2">{translations[language].cusip}</th>
+                      <th className="p-2">{translations[language].issueDate}</th>
+                      <th className="p-2">{translations[language].faceValue}</th>
+                      <th className="p-2">{translations[language].accruedInterest}</th>
+                      <th className="p-2">{translations[language].netInterest}</th>
+                      <th className="p-2">{translations[language].capitalGain}</th>
+                      <th className="p-2">{translations[language].totalReturn}</th>
+                      <th className="p-2">{translations[language].returnPercentage}</th>
+                      {language === 'zh' && <th className="p-2">{translations[language].hkdReturn}</th>}
+                      <th className="p-2">{translations[language].calculationSteps}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((result, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="p-2">{result.cusip}</td>
+                        <td className="p-2">{result.issueDate}</td>
+                        <td className="p-2">${result.faceValue}</td>
+                        <td className="p-2">${result.accruedInterest}</td>
+                        <td className="p-2">${result.netInterest}</td>
+                        <td className="p-2">${result.capitalGain}</td>
+                        <td className="p-2">${result.totalReturn}</td>
+                        <td className="p-2">{result.returnPercentage}%</td>
+                        {language === 'zh' && result.hkdReturn && <td className="p-2">HK${result.hkdReturn}</td>}
+                        <td className="p-2">
+                          <ul className="list-disc pl-5 text-sm">
+                            {result.steps.map((step, idx) => (
+                              <li key={idx}>{step}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <p className="text-sm text-gray-600 mt-2">{translations[language].taxNote}</p>
-              <h3 className="mt-4 font-semibold">{translations[language].calculationSteps}</h3>
-              <ul className="list-disc pl-5">
-                {results.steps.map((step, index) => (
-                  <li key={index} className="text-sm">{step}</li>
-                ))}
-              </ul>
             </div>
           )}
           {history.length > 0 && (
@@ -609,6 +725,7 @@
     // 渲染應用
     try {
       ReactDOM.render(<BondCalculator />, document.getElementById('root'));
+      console.log('Application rendered successfully');
     } catch (err) {
       console.error('Render Error:', err.message);
     }
